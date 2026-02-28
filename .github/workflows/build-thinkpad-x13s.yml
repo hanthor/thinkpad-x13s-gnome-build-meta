@@ -47,8 +47,8 @@ jobs:
           # We don't use 'just' here, raw podman directly.
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "${{ github.workspace }}:/src:rw,z" \
+            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw,z" \
             -w /src \
             "$BST2_IMAGE" \
             bst -o arch ${{ env.ARCH }} show --deps all --order stage \
@@ -58,8 +58,8 @@ jobs:
           # Run planning script
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "${{ github.workspace }}:/src:rw,z" \
+            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw,z" \
             -w /src \
             "$BST2_IMAGE" \
             python3 /src/.github/scripts/ci-build-matrix.py ${{ env.TARGET }} \
@@ -150,8 +150,8 @@ jobs:
         run: |
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "${{ github.workspace }}:/src:rw,z" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw,z" \
             -w /src \
             "$BST2_IMAGE" \
             bst --no-interactive --config /src/buildstream-ci.conf \
@@ -165,7 +165,7 @@ jobs:
 
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
-            -v "${{ github.workspace }}:/output:rw" \
+            -v "${{ github.workspace }}:/output:rw,z" \
             "$BST2_IMAGE" \
             sh -c "tar -cf /output/cas-core.tar -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . || [ \$? -eq 1 ]"
 
@@ -289,8 +289,8 @@ jobs:
           while [ $count -lt $max_retries ]; do
             if podman run --rm --privileged \
               --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-              -v "${{ github.workspace }}:/src:rw" \
-              -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+              -v "${{ github.workspace }}:/src:rw,z" \
+              -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw,z" \
               -w /src \
               "$BST2_IMAGE" \
               bst --no-interactive --config /src/buildstream-ci.conf \
@@ -314,7 +314,7 @@ jobs:
 
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
-            -v "${{ github.workspace }}:/output:rw" \
+            -v "${{ github.workspace }}:/output:rw,z" \
             "$BST2_IMAGE" \
             sh -c "tar -cf /output/cas-${{ matrix.chunk }}.tar -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . || [ \$? -eq 1 ]"
 
@@ -409,8 +409,8 @@ jobs:
         run: |
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "${{ github.workspace }}:/src:rw,z" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw,z" \
             -w /src \
             "$BST2_IMAGE" \
             bst --no-interactive --config /src/buildstream-ci.conf \
@@ -421,8 +421,8 @@ jobs:
         run: |
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
-            -v "${{ github.workspace }}:/src:rw" \
-            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "${{ github.workspace }}:/src:rw,z" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw,z" \
             -w /src \
             "$BST2_IMAGE" \
             bst --no-interactive --config /src/buildstream-ci.conf \
