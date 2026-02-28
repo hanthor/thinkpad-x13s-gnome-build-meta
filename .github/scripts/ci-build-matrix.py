@@ -33,7 +33,13 @@ def get_build_plan(target: str) -> list[dict]:
         "--format", "%{name}||%{state}||%{full-key}",
         target,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"bst show failed with exit code {e.returncode}", file=sys.stderr)
+        print(f"STDOUT:\n{e.stdout}", file=sys.stderr)
+        print(f"STDERR:\n{e.stderr}", file=sys.stderr)
+        sys.exit(1)
 
     elements = []
     for line in result.stdout.splitlines():
