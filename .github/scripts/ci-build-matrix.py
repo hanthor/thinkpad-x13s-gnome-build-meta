@@ -41,6 +41,8 @@ def get_build_plan(target: str) -> list[dict]:
             continue
         try:
             parts = line.split("||")
+            if len(parts) < 2:
+                continue
             name = parts[0].strip()
             state = parts[1].strip()
             full_key = parts[2].strip() if len(parts) > 2 else ""
