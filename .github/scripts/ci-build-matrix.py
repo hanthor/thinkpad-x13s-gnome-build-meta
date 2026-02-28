@@ -25,7 +25,9 @@ import sys
 def get_build_plan(target: str) -> list[dict]:
     """Get elements that need building, with their full cache keys."""
     cmd = [
-        "bst", "show",
+        "bst", 
+        "-o", "arch", "aarch64",
+        "show",
         "--deps", "all",
         "--order", "stage",
         "--format", "%{name}||%{state}||%{full-key}",
