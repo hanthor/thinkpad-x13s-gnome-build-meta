@@ -34,7 +34,7 @@ def get_build_plan(target: str) -> list[dict]:
         target,
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd="/src")
     except subprocess.CalledProcessError as e:
         print(f"bst show failed with exit code {e.returncode}", file=sys.stderr)
         print(f"STDOUT:\n{e.stdout}", file=sys.stderr)
