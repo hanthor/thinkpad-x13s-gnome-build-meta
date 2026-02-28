@@ -28,6 +28,8 @@ jobs:
       final_target: ${{ steps.matrix.outputs.final_target }}
     steps:
       - uses: actions/checkout@v4
+      - name: Generate Boot Keys
+        run: make -C files/boot-keys
       - run: podman pull "$BST2_IMAGE"
 
       - name: Cache BuildStream sources
@@ -96,6 +98,8 @@ jobs:
           platforms: all
 
       - uses: actions/checkout@v4
+      - name: Generate Boot Keys
+        run: make -C files/boot-keys
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup ORAS
@@ -195,6 +199,8 @@ jobs:
           platforms: all
 
       - uses: actions/checkout@v4
+      - name: Generate Boot Keys
+        run: make -C files/boot-keys
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup ORAS
@@ -339,6 +345,8 @@ jobs:
           platforms: all
 
       - uses: actions/checkout@v4
+      - name: Generate Boot Keys
+        run: make -C files/boot-keys
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup ORAS
