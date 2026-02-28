@@ -115,7 +115,7 @@ jobs:
         run: |
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:${{ env.ARCH }}-latest"
 
           if oras pull "$CORE_REF" -o .; then
             if [ -f cas-core.tar.zst ]; then
@@ -168,7 +168,7 @@ jobs:
         if: steps.build.outputs.skipped != 'true'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:${{ env.ARCH }}-latest"
 
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
@@ -220,7 +220,7 @@ jobs:
         if: env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${{ env.ARCH }}-${CHUNK_CACHE_KEY}"
           if oras manifest fetch "$CHUNK_REF" > /dev/null 2>&1; then
             echo "cache_hit=true" >> "$GITHUB_OUTPUT"
           else
@@ -232,7 +232,7 @@ jobs:
         run: |
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:${{ env.ARCH }}-latest"
           if oras pull "$CORE_REF" -o .; then
             if [ -f cas-core.tar.zst ]; then
               zstd -d -T0 cas-core.tar.zst -o cas-core.tar
@@ -247,7 +247,7 @@ jobs:
         continue-on-error: true
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:latest"
+          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${{ env.ARCH }}-latest"
           if oras pull "$LATEST_REF" -o .; then
             if [ -f cas-${{ matrix.chunk }}.tar.zst ]; then
               zstd -d -T0 cas-${{ matrix.chunk }}.tar.zst -o cas-${{ matrix.chunk }}.tar
@@ -317,8 +317,8 @@ jobs:
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
-          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:latest"
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${{ env.ARCH }}-${CHUNK_CACHE_KEY}"
+          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${{ env.ARCH }}-latest"
 
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
@@ -360,7 +360,7 @@ jobs:
           mkdir -p ~/.cache/buildstream
 
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:${{ env.ARCH }}-latest"
           if oras pull "$CORE_REF" -o .; then
             if [ -f cas-core.tar.zst ]; then
               zstd -d -T0 cas-core.tar.zst -o cas-core.tar
@@ -374,12 +374,12 @@ jobs:
             PULLED=false
 
             if [ -n "$CACHE_KEY" ]; then
-              STRICT_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:${CACHE_KEY}"
+              STRICT_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:${{ env.ARCH }}-${CACHE_KEY}"
               if oras pull "$STRICT_REF" -o .; then PULLED=true; fi
             fi
 
             if [ "$PULLED" = "false" ]; then
-              LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:latest"
+              LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:${{ env.ARCH }}-latest"
               oras pull "$LATEST_REF" -o . || continue
             fi
 
