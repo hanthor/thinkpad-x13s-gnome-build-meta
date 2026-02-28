@@ -1,0 +1,436 @@
+name: Build ThinkPad X13s (Multi-Runner)
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+env:
+  BST2_IMAGE: registry.gitlab.com/freedesktop-sdk/infrastructure/freedesktop-sdk-docker-images/bst2:f89b4aef847ef040b345acceda15a850219eb8f1
+  NUM_CHUNKS: "12"
+  CORE_SPLIT: "250"
+  TARGET: boards/thinkpad-x13s/image.bst
+  ARCH: aarch64
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  planning:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix_keys: ${{ steps.matrix.outputs.matrix_keys }}
+      matrix_data: ${{ steps.matrix.outputs.matrix_data }}
+      cache_keys: ${{ steps.matrix.outputs.cache_keys }}
+      core_targets: ${{ steps.matrix.outputs.core_targets }}
+      final_target: ${{ steps.matrix.outputs.final_target }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: podman pull "$BST2_IMAGE"
+
+      - name: Cache BuildStream sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/buildstream/sources
+          key: bst-sources-${{ runner.os }}-${{ hashFiles('project.conf', 'elements/**/*.bst') }}
+          restore-keys: |
+            bst-sources-${{ runner.os }}-
+
+      - name: Generate Build Matrix
+        id: matrix
+        run: |
+          mkdir -p .cache/buildstream logs
+
+          # Generate the build plan and matrix inside the bst2 container
+          # We don't use 'just' here, raw podman directly.
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst -o arch ${{ env.ARCH }} show --deps all --order stage \
+            --format '%{name}||%{state}||%{full-key}' ${{ env.TARGET }} \
+            > build-plan.txt 2>&1 || true
+
+          # Run planning script
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            python3 /src/.github/scripts/ci-build-matrix.py ${{ env.TARGET }} \
+              "$NUM_CHUNKS" "$CORE_SPLIT" > matrix.json
+
+          cat matrix.json
+
+          # Parse outputs for GitHub Actions
+          python3 -c "
+          import json
+          data = json.load(open('matrix.json'))
+          keys = list(data['matrix'].keys())
+          print(f'matrix_keys={json.dumps(keys)}')
+          print(f'matrix_data={json.dumps(data[\"matrix\"])}')
+          print(f'cache_keys={json.dumps(data.get(\"cache_keys\", {}))}')
+          print(f'core_targets={data.get(\"core\", \"\")}')
+          print(f'final_target={data[\"final\"]}')
+          " >> "$GITHUB_OUTPUT"
+
+  build_core:
+    needs: planning
+    if: needs.planning.outputs.core_targets != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TARGETS: ${{ needs.planning.outputs.core_targets }}
+    steps:
+      - name: Set up QEMU for ARM architectures
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - uses: actions/checkout@v4
+      - run: podman pull "$BST2_IMAGE"
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Cache BuildStream sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/buildstream/sources
+          key: bst-sources-${{ runner.os }}-${{ hashFiles('project.conf', 'elements/**/*.bst') }}
+          restore-keys: |
+            bst-sources-${{ runner.os }}-
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Restore Core Cache from GHCR
+        run: |
+          mkdir -p ~/.cache/buildstream
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+
+          if oras pull "$CORE_REF" -o .; then
+            if [ -f cas-core.tar.zst ]; then
+              zstd -d -T0 cas-core.tar.zst -o cas-core.tar
+              tar -xf cas-core.tar -C "$HOME/.cache/buildstream"
+              rm -f cas-core.tar cas-core.tar.zst
+              echo "Core CAS warmed."
+            fi
+          fi
+
+      - name: Generate CI config
+        run: |
+          mkdir -p logs
+          cat > buildstream-ci.conf <<'BSTCONF'
+          scheduler:
+            on-error: continue
+            fetchers: 12
+            builders: 2
+            network-retries: 3
+          logging:
+            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
+            error-lines: 80
+          build:
+            max-jobs: 0
+            retry-failed: True
+          cache:
+            cache-buildtrees: never
+          BSTCONF
+
+      - name: Build Core
+        run: |
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst --no-interactive --config /src/buildstream-ci.conf \
+            --log-file /src/logs/build-core.log \
+            -o arch ${{ env.ARCH }} build $TARGETS
+
+      - name: Archive and Push Core CAS
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+
+          podman run --rm \
+            -v "$HOME/.cache/buildstream:/input:ro" \
+            -v "${{ github.workspace }}:/output:rw" \
+            "$BST2_IMAGE" \
+            sh -c "tar -cf /output/cas-core.tar -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . || [ \$? -eq 1 ]"
+
+          zstd -T0 --rm cas-core.tar -o cas-core.tar.zst
+          oras push "$CORE_REF" cas-core.tar.zst:application/vnd.buildstream.cas.tar.zst
+
+  build_deps:
+    needs: [planning, build_core]
+    if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: ${{ fromJson(needs.planning.outputs.matrix_keys) }}
+    env:
+      TARGETS: ${{ fromJson(needs.planning.outputs.matrix_data)[matrix.chunk] }}
+      CHUNK_CACHE_KEY: ${{ fromJson(needs.planning.outputs.cache_keys)[matrix.chunk] }}
+    name: Build ${{ matrix.chunk }}
+    steps:
+      - name: Set up QEMU for ARM architectures
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - uses: actions/checkout@v4
+      - run: podman pull "$BST2_IMAGE"
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Cache BuildStream sources
+        uses: actions/cache@v4
+        with:
+          path: .cache/buildstream/sources
+          key: bst-sources-${{ runner.os }}-${{ hashFiles('project.conf', 'elements/**/*.bst') }}
+          restore-keys: |
+            bst-sources-${{ runner.os }}-
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Check GHCR for cached chunk
+        id: cache_check
+        if: env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
+          if oras manifest fetch "$CHUNK_REF" > /dev/null 2>&1; then
+            echo "cache_hit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cache_hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore Core Cache
+        if: steps.cache_check.outputs.cache_hit != 'true'
+        run: |
+          mkdir -p ~/.cache/buildstream
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          if oras pull "$CORE_REF" -o .; then
+            if [ -f cas-core.tar.zst ]; then
+              zstd -d -T0 cas-core.tar.zst -o cas-core.tar
+              tar -xf cas-core.tar -C "$HOME/.cache/buildstream"
+              rm -f cas-core.tar cas-core.tar.zst
+            fi
+          fi
+
+      - name: Restore Chunk Cache (fallback to latest)
+        id: restore
+        if: steps.cache_check.outputs.cache_hit != 'true'
+        continue-on-error: true
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:latest"
+          if oras pull "$LATEST_REF" -o .; then
+            if [ -f cas-${{ matrix.chunk }}.tar.zst ]; then
+              zstd -d -T0 cas-${{ matrix.chunk }}.tar.zst -o cas-${{ matrix.chunk }}.tar
+              tar -xf cas-${{ matrix.chunk }}.tar -C "$HOME/.cache/buildstream"
+              rm -f cas-${{ matrix.chunk }}.tar cas-${{ matrix.chunk }}.tar.zst
+            fi
+          fi
+
+      - name: Generate CI config
+        if: steps.cache_check.outputs.cache_hit != 'true'
+        run: |
+          mkdir -p logs
+          cat > buildstream-ci.conf <<'BSTCONF'
+          scheduler:
+            on-error: continue
+            fetchers: 12
+            builders: 2
+            network-retries: 3
+          logging:
+            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
+            error-lines: 80
+          build:
+            max-jobs: 0
+            retry-failed: True
+          cache:
+            cache-buildtrees: never
+          BSTCONF
+
+      - name: Build Chunk
+        id: build
+        if: steps.cache_check.outputs.cache_hit != 'true'
+        run: |
+          if [ -z "$TARGETS" ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mkdir -p ~/.cache/buildstream
+
+          max_retries=3
+          count=0
+          success=false
+          while [ $count -lt $max_retries ]; do
+            if podman run --rm --privileged \
+              --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+              -v "${{ github.workspace }}:/src:rw" \
+              -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+              -w /src \
+              "$BST2_IMAGE" \
+              bst --no-interactive --config /src/buildstream-ci.conf \
+              --log-file /src/logs/build-${{ matrix.chunk }}.log \
+              -o arch ${{ env.ARCH }} build $TARGETS; then
+              success=true
+              break
+            fi
+            count=$((count+1))
+            sleep 10
+          done
+
+          if [ "$success" = "false" ]; then exit 1; fi
+
+      - name: Archive and Push CAS to GHCR
+        if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
+          LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:latest"
+
+          podman run --rm \
+            -v "$HOME/.cache/buildstream:/input:ro" \
+            -v "${{ github.workspace }}:/output:rw" \
+            "$BST2_IMAGE" \
+            sh -c "tar -cf /output/cas-${{ matrix.chunk }}.tar -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . || [ \$? -eq 1 ]"
+
+          zstd -T0 --rm cas-${{ matrix.chunk }}.tar -o cas-${{ matrix.chunk }}.tar.zst
+          oras push "$LATEST_REF" cas-${{ matrix.chunk }}.tar.zst:application/vnd.buildstream.cas.tar.zst
+
+          if [ "${{ steps.build.outcome }}" == "success" ]; then
+            oras push "$CHUNK_REF" cas-${{ matrix.chunk }}.tar.zst:application/vnd.buildstream.cas.tar.zst
+          fi
+
+  build_final:
+    needs: [planning, build_deps]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up QEMU for ARM architectures
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - uses: actions/checkout@v4
+      - run: podman pull "$BST2_IMAGE"
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download and Merge CAS Chunks from GHCR
+        env:
+          MATRIX_KEYS: ${{ needs.planning.outputs.matrix_keys }}
+          CACHE_KEYS: ${{ needs.planning.outputs.cache_keys }}
+        run: |
+          mkdir -p ~/.cache/buildstream
+
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          if oras pull "$CORE_REF" -o .; then
+            if [ -f cas-core.tar.zst ]; then
+              zstd -d -T0 cas-core.tar.zst -o cas-core.tar
+              tar -xf cas-core.tar -C "$HOME/.cache/buildstream"
+              rm -f cas-core.tar cas-core.tar.zst
+            fi
+          fi
+
+          echo "$MATRIX_KEYS" | jq -r '.[]' | while read -r chunk; do
+            CACHE_KEY=$(echo "$CACHE_KEYS" | jq -r --arg c "$chunk" '.[$c] // empty')
+            PULLED=false
+
+            if [ -n "$CACHE_KEY" ]; then
+              STRICT_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:${CACHE_KEY}"
+              if oras pull "$STRICT_REF" -o .; then PULLED=true; fi
+            fi
+
+            if [ "$PULLED" = "false" ]; then
+              LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:latest"
+              oras pull "$LATEST_REF" -o . || continue
+            fi
+
+            TARBALL="cas-${chunk}.tar.zst"
+            if [ -f "$TARBALL" ]; then
+              zstd -d -T0 "$TARBALL" -o "cas-${chunk}.tar"
+              tar -xf "cas-${chunk}.tar" -C "$HOME/.cache/buildstream"
+              rm -f "$TARBALL" "cas-${chunk}.tar"
+            fi
+          done
+
+      - name: Generate CI config
+        run: |
+          mkdir -p logs
+          cat > buildstream-ci.conf <<'BSTCONF'
+          scheduler:
+            on-error: continue
+            fetchers: 12
+            builders: 2
+            network-retries: 3
+          logging:
+            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
+            error-lines: 80
+          build:
+            max-jobs: 0
+            retry-failed: True
+          cache:
+            cache-buildtrees: never
+          BSTCONF
+
+      - name: Build Final Target
+        run: |
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst --no-interactive --config /src/buildstream-ci.conf \
+            --log-file /src/logs/build-final.log \
+            -o arch ${{ env.ARCH }} build ${{ needs.planning.outputs.final_target }}
+
+      - name: Checkout Image Artifact
+        run: |
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst --no-interactive --config /src/buildstream-ci.conf \
+            -o arch ${{ env.ARCH }} artifact checkout ${{ needs.planning.outputs.final_target }} --directory /src/output-image
+            
+      - name: Upload ThinkPad X13s Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: thinkpad-x13s-image
+          path: output-image/
+          retention-days: 7
