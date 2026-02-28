@@ -322,8 +322,8 @@ jobs:
           fi
 
   build_final:
-    needs: [planning, build_deps]
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    needs: [planning, build_core, build_deps]
+    if: always() && needs.planning.result == 'success' && needs.build_core.result == 'success' && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
