@@ -84,7 +84,7 @@ jobs:
   build_core:
     needs: planning
     if: needs.planning.outputs.core_targets != ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     permissions:
       contents: read
@@ -92,11 +92,6 @@ jobs:
     env:
       TARGETS: ${{ needs.planning.outputs.core_targets }}
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - name: Generate Boot Keys
         run: make -C files/boot-keys
@@ -179,7 +174,7 @@ jobs:
   build_deps:
     needs: [planning, build_core]
     if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     permissions:
       contents: read
@@ -193,11 +188,6 @@ jobs:
       CHUNK_CACHE_KEY: ${{ fromJson(needs.planning.outputs.cache_keys)[matrix.chunk] }}
     name: Build ${{ matrix.chunk }}
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - name: Generate Boot Keys
         run: make -C files/boot-keys
@@ -334,16 +324,11 @@ jobs:
   build_final:
     needs: [planning, build_deps]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - name: Generate Boot Keys
         run: make -C files/boot-keys
