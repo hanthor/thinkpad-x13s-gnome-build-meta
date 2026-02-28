@@ -146,6 +146,7 @@ jobs:
           BSTCONF
 
       - name: Build Core
+        id: build
         run: |
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
@@ -157,7 +158,14 @@ jobs:
             --log-file /src/logs/build-core.log \
             -o arch ${{ env.ARCH }} build $TARGETS
 
+          if grep -q "Build Queue: processed 0," logs/build-core.log; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Archive and Push Core CAS
+        if: steps.build.outputs.skipped != 'true'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
@@ -300,6 +308,10 @@ jobs:
           done
 
           if [ "$success" = "false" ]; then exit 1; fi
+
+          if grep -q "Build Queue: processed 0," logs/build-${{ matrix.chunk }}.log; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Archive and Push CAS to GHCR
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
