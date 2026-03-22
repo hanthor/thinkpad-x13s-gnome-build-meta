@@ -1,4 +1,6 @@
 kind: stack
 
 depends:
-- boards/thinkpad-x13s/filesystem.bst
+- freedesktop-sdk.bst:components/ostree.bst
+- freedesktop-sdk.bst:components/genimage.bst
+- freedesktop-sdk.bst:integration/mtab.bst

@@ -55,12 +55,13 @@ jobs:
             --format '%{name}||%{state}||%{full-key}' ${{ env.TARGET }} \
             > build-plan.txt 2>&1 || true
 
-          # Run planning script
+          # Run planning script (reads build-plan.txt generated above)
           podman run --rm --privileged \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
+            -e BST_ARCH=${{ env.ARCH }} \
             "$BST2_IMAGE" \
             python3 /src/.github/scripts/ci-build-matrix.py ${{ env.TARGET }} \
               "$NUM_CHUNKS" "$CORE_SPLIT" > matrix.json
