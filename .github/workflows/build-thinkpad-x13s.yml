@@ -38,6 +38,9 @@ jobs:
           restore-keys: |
             bst-sources-${{ runner.os }}-
 
+      - name: Generate snakeoil boot keys
+        run: make -C files/boot-keys IMPORT_MODE=snakeoil
+
       - name: Generate Build Matrix
         id: matrix
         run: |
@@ -127,6 +130,9 @@ jobs:
               echo "Core CAS warmed."
             fi
           fi
+
+      - name: Generate snakeoil boot keys
+        run: make -C files/boot-keys IMPORT_MODE=snakeoil
 
       - name: Generate CI config
         run: |
@@ -252,6 +258,9 @@ jobs:
               rm -f cas-${{ matrix.chunk }}.tar cas-${{ matrix.chunk }}.tar.zst
             fi
           fi
+
+      - name: Generate snakeoil boot keys
+        run: make -C files/boot-keys IMPORT_MODE=snakeoil
 
       - name: Generate CI config
         if: steps.cache_check.outputs.cache_hit != 'true'
@@ -386,6 +395,9 @@ jobs:
               rm -f "$TARBALL" "cas-${chunk}.tar"
             fi
           done
+
+      - name: Generate snakeoil boot keys
+        run: make -C files/boot-keys IMPORT_MODE=snakeoil
 
       - name: Generate CI config
         run: |
