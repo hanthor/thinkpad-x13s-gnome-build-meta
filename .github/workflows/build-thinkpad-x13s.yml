@@ -28,7 +28,7 @@ jobs:
       final_target: ${{ steps.matrix.outputs.final_target }}
     steps:
       - uses: actions/checkout@v4
-      - run: podman pull "$BST2_IMAGE"
+      - run: sudo podman pull "$BST2_IMAGE"
 
       - name: Cache BuildStream sources
         uses: actions/cache@v4
@@ -48,7 +48,7 @@ jobs:
 
           # Generate the build plan and matrix inside the bst2 container
           # We don't use 'just' here, raw podman directly.
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -59,7 +59,7 @@ jobs:
             > build-plan.txt 2>&1 || true
 
           # Run planning script (reads build-plan.txt generated above)
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -95,7 +95,7 @@ jobs:
       TARGETS: ${{ needs.planning.outputs.core_targets }}
     steps:
       - uses: actions/checkout@v4
-      - run: podman pull "$BST2_IMAGE"
+      - run: sudo podman pull "$BST2_IMAGE"
 
       - name: Free disk space
         run: |
@@ -156,7 +156,7 @@ jobs:
 
       - name: Build Core
         run: |
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -171,7 +171,7 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
 
-          podman run --rm \
+          sudo podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
@@ -198,7 +198,7 @@ jobs:
     name: Build ${{ matrix.chunk }}
     steps:
       - uses: actions/checkout@v4
-      - run: podman pull "$BST2_IMAGE"
+      - run: sudo podman pull "$BST2_IMAGE"
 
       - name: Free disk space
         run: |
@@ -299,7 +299,7 @@ jobs:
           count=0
           success=false
           while [ $count -lt $max_retries ]; do
-            if podman run --rm --privileged \
+            if sudo podman run --rm --privileged \
               --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
               -v "${{ github.workspace }}:/src:rw" \
               -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -324,7 +324,7 @@ jobs:
           CHUNK_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
           LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${{ matrix.chunk }}:latest"
 
-          podman run --rm \
+          sudo podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
@@ -346,7 +346,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - run: podman pull "$BST2_IMAGE"
+      - run: sudo podman pull "$BST2_IMAGE"
 
       - name: Free disk space
         run: |
@@ -423,7 +423,7 @@ jobs:
 
       - name: Build Final Target
         run: |
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -435,7 +435,7 @@ jobs:
 
       - name: Checkout Image Artifact
         run: |
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -460,7 +460,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - run: podman pull "$BST2_IMAGE"
+      - run: sudo podman pull "$BST2_IMAGE"
 
       - name: Free disk space
         run: |
@@ -539,7 +539,7 @@ jobs:
 
       - name: Build Live ISO
         run: |
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
@@ -551,7 +551,7 @@ jobs:
 
       - name: Checkout Live ISO Artifact
         run: |
-          podman run --rm --privileged \
+          sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
