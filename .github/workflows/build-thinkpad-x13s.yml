@@ -49,7 +49,7 @@ jobs:
           # Generate the build plan and matrix inside the bst2 container
           # We don't use 'just' here, raw podman directly.
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -60,7 +60,7 @@ jobs:
 
           # Run planning script (reads build-plan.txt generated above)
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -157,7 +157,7 @@ jobs:
       - name: Build Core
         run: |
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -300,7 +300,7 @@ jobs:
           success=false
           while [ $count -lt $max_retries ]; do
             if podman run --rm --privileged \
-              --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+              --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
               -v "${{ github.workspace }}:/src:rw" \
               -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
               -w /src \
@@ -424,7 +424,7 @@ jobs:
       - name: Build Final Target
         run: |
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -436,7 +436,7 @@ jobs:
       - name: Checkout Image Artifact
         run: |
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -540,7 +540,7 @@ jobs:
       - name: Build Live ISO
         run: |
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
@@ -552,7 +552,7 @@ jobs:
       - name: Checkout Live ISO Artifact
         run: |
           podman run --rm --privileged \
-            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
             -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
