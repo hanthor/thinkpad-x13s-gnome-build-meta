@@ -450,3 +450,120 @@ jobs:
           name: thinkpad-x13s-image
           path: output-image/
           retention-days: 7
+
+  build_live_iso:
+    needs: [planning, build_deps]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: podman pull "$BST2_IMAGE"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/lib/jvm \
+            /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Download and Merge CAS Chunks from GHCR
+        env:
+          MATRIX_KEYS: ${{ needs.planning.outputs.matrix_keys }}
+          CACHE_KEYS: ${{ needs.planning.outputs.cache_keys }}
+        run: |
+          mkdir -p ~/.cache/buildstream
+
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          CORE_REF="ghcr.io/${REPO_LOWER}/gnome-cache-core:latest"
+          if oras pull "$CORE_REF" -o .; then
+            if [ -f cas-core.tar.zst ]; then
+              zstd -d -T0 cas-core.tar.zst -o cas-core.tar
+              tar -xf cas-core.tar -C "$HOME/.cache/buildstream"
+              rm -f cas-core.tar cas-core.tar.zst
+            fi
+          fi
+
+          echo "$MATRIX_KEYS" | jq -r '.[]' | while read -r chunk; do
+            CACHE_KEY=$(echo "$CACHE_KEYS" | jq -r --arg c "$chunk" '.[$c] // empty')
+            PULLED=false
+
+            if [ -n "$CACHE_KEY" ]; then
+              STRICT_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:${CACHE_KEY}"
+              if oras pull "$STRICT_REF" -o .; then PULLED=true; fi
+            fi
+
+            if [ "$PULLED" = "false" ]; then
+              LATEST_REF="ghcr.io/${REPO_LOWER}/gnome-cache-${chunk}:latest"
+              oras pull "$LATEST_REF" -o . || continue
+            fi
+
+            TARBALL="cas-${chunk}.tar.zst"
+            if [ -f "$TARBALL" ]; then
+              zstd -d -T0 "$TARBALL" -o "cas-${chunk}.tar"
+              tar -xf "cas-${chunk}.tar" -C "$HOME/.cache/buildstream"
+              rm -f "$TARBALL" "cas-${chunk}.tar"
+            fi
+          done
+
+      - name: Generate snakeoil boot keys
+        run: make -C files/boot-keys IMPORT_MODE=snakeoil
+
+      - name: Generate CI config
+        run: |
+          mkdir -p logs
+          cat > buildstream-ci.conf <<'BSTCONF'
+          scheduler:
+            on-error: continue
+            fetchers: 12
+            builders: 2
+            network-retries: 3
+          logging:
+            message-format: '[%{wallclock}][%{elapsed}][%{key}][%{element}] %{action} %{message}'
+            error-lines: 80
+          build:
+            max-jobs: 0
+            retry-failed: True
+          cache:
+            cache-buildtrees: never
+          BSTCONF
+
+      - name: Build Live ISO
+        run: |
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst --no-interactive --config /src/buildstream-ci.conf \
+            --log-file /src/logs/build-live-iso.log \
+            -o arch ${{ env.ARCH }} build boards/thinkpad-x13s/live-image.bst
+
+      - name: Checkout Live ISO Artifact
+        run: |
+          podman run --rm --privileged \
+            --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
+            -v "${{ github.workspace }}:/src:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -w /src \
+            "$BST2_IMAGE" \
+            bst --no-interactive --config /src/buildstream-ci.conf \
+            -o arch ${{ env.ARCH }} artifact checkout \
+            boards/thinkpad-x13s/live-image.bst --directory /src/output-iso
+
+      - name: Upload Live ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: thinkpad-x13s-live-iso
+          path: output-iso/disk.iso
+          retention-days: 7

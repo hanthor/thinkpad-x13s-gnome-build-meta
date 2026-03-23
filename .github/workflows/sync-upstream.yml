@@ -1,0 +1,150 @@
+name: Sync from upstream gnome-build-meta
+
+# Periodically rebase our X13s commits on top of the latest upstream
+# GNOME/gnome-build-meta (GitLab). If the rebase succeeds, force-pushes the
+# branch. If it conflicts, opens a GitHub issue so a human can resolve it.
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+    env:
+      UPSTREAM_URL: https://gitlab.gnome.org/GNOME/gnome-build-meta.git
+      UPSTREAM_BRANCH: main
+      OUR_BRANCH: feat/thinkpad-x13s-arm-build
+      # Commits authored by us — used to find our patch range for rebasing.
+      # The first commit SHA that is NOT from upstream (the base of our X13s work).
+      # Update this if you squash/restructure the X13s commits.
+      X13S_BASE_COMMIT_MSG: "ci: Add multi-runner GitHub workflow for ThinkPad X13s ARM image"
+    steps:
+      - name: Checkout our branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.OUR_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: git remote add upstream "$UPSTREAM_URL"
+
+      - name: Fetch upstream
+        run: git fetch upstream "$UPSTREAM_BRANCH"
+
+      - name: Check if already up to date
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git rev-parse "upstream/$UPSTREAM_BRANCH")
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+
+          # Find the commit in our history that matches upstream HEAD.
+          # If upstream HEAD is already an ancestor of our branch, nothing to do.
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
+            echo "already_synced=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_synced=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Find our X13s patch range
+        if: steps.check.outputs.already_synced == 'false'
+        id: range
+        run: |
+          # Find the oldest commit of ours that isn't in upstream/main.
+          # Our X13s commits are everything that diverges from upstream.
+          FORK_POINT=$(git merge-base HEAD "upstream/$UPSTREAM_BRANCH" || true)
+          echo "fork_point=$FORK_POINT" >> "$GITHUB_OUTPUT"
+
+          X13S_COMMITS=$(git log --oneline "${FORK_POINT}..HEAD")
+          echo "X13s commits to rebase:"
+          echo "$X13S_COMMITS"
+          echo "commit_count=$(echo "$X13S_COMMITS" | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: Attempt rebase onto upstream
+        if: steps.check.outputs.already_synced == 'false'
+        id: rebase
+        run: |
+          FORK_POINT="${{ steps.range.outputs.fork_point }}"
+
+          # Rebase our commits (fork_point..HEAD) onto upstream/main
+          if git rebase --onto "upstream/$UPSTREAM_BRANCH" "$FORK_POINT" HEAD; then
+            echo "success=true" >> "$GITHUB_OUTPUT"
+          else
+            git rebase --abort || true
+            echo "success=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push rebased branch
+        if: steps.check.outputs.already_synced == 'false' && steps.rebase.outputs.success == 'true'
+        run: |
+          git push origin HEAD:"$OUR_BRANCH" --force-with-lease
+          echo "Successfully rebased ${{ steps.range.outputs.commit_count }} X13s commit(s) onto upstream ${{ steps.check.outputs.upstream_sha }}"
+
+      - name: Open issue on conflict
+        if: steps.check.outputs.already_synced == 'false' && steps.rebase.outputs.success == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Upstream sync conflict — manual rebase required`;
+            const body = `## Upstream sync failed
+
+            The weekly upstream sync workflow failed to rebase our X13s commits onto \
+            the latest \`GNOME/gnome-build-meta\` (\`${process.env.UPSTREAM_URL}\`).
+
+            ### What happened
+            - Upstream branch: \`${process.env.UPSTREAM_BRANCH}\` @ \`${{ steps.check.outputs.upstream_sha }}\`
+            - Our branch: \`${process.env.OUR_BRANCH}\`
+            - \`git rebase\` reported conflicts that need manual resolution
+
+            ### How to fix
+
+            \`\`\`bash
+            git remote add upstream https://gitlab.gnome.org/GNOME/gnome-build-meta.git
+            git fetch upstream main
+            git checkout feat/thinkpad-x13s-arm-build
+            git rebase upstream/main
+            # resolve conflicts, then:
+            git rebase --continue
+            git push origin feat/thinkpad-x13s-arm-build --force-with-lease
+            \`\`\`
+
+            ### Files most likely to conflict
+            - \`files/gnomeos/qrtr/condition.conf\` (we added one \`ConditionFirmware\` line)
+            - \`.github/scripts/ci-build-matrix.py\` (we modified build-plan.txt reading)
+
+            > This issue was opened automatically by the sync workflow.`;
+
+            // Check for an existing open issue to avoid duplicates
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'upstream-sync',
+            });
+
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['upstream-sync'],
+              });
+            } else {
+              console.log('An upstream-sync issue already exists, skipping creation.');
+            }
+
+      - name: Report already in sync
+        if: steps.check.outputs.already_synced == 'true'
+        run: echo "Branch is already up to date with upstream — nothing to do."
