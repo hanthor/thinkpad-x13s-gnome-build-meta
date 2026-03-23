@@ -86,7 +86,7 @@ jobs:
   build_core:
     needs: planning
     if: needs.planning.outputs.core_targets != ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     permissions:
       contents: read
@@ -94,13 +94,14 @@ jobs:
     env:
       TARGETS: ${{ needs.planning.outputs.core_targets }}
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - run: podman pull "$BST2_IMAGE"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc             /usr/local/share/powershell /usr/share/swift /usr/lib/jvm             /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
@@ -182,7 +183,7 @@ jobs:
   build_deps:
     needs: [planning, build_core]
     if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     permissions:
       contents: read
@@ -196,13 +197,14 @@ jobs:
       CHUNK_CACHE_KEY: ${{ fromJson(needs.planning.outputs.cache_keys)[matrix.chunk] }}
     name: Build ${{ matrix.chunk }}
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - run: podman pull "$BST2_IMAGE"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc             /usr/local/share/powershell /usr/share/swift /usr/lib/jvm             /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
@@ -338,18 +340,19 @@ jobs:
   build_final:
     needs: [planning, build_deps]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Set up QEMU for ARM architectures
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - uses: actions/checkout@v4
       - run: podman pull "$BST2_IMAGE"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc             /usr/local/share/powershell /usr/share/swift /usr/lib/jvm             /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
