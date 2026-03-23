@@ -1,7 +1,7 @@
 kind: stack
 
 depends:
-- gnomeos/initramfs.bst
+- boards/thinkpad-x13s/initramfs-only.bst
 - gnomeos/usr/deps.bst
 - gnomeos-deps/pd-mapper.bst
 - gnomeos-deps/rmtfs.bst
