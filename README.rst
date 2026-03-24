@@ -2,6 +2,29 @@
    :target: https://gnome.pages.gitlab.gnome.org/gnome-build-meta/release-contents.html
    :alt: CVE reports
 
+GNOME OS for ThinkPad X13s (Qualcomm SC8280XP)
+===============================================
+
+This is a fork of `GNOME/gnome-build-meta <https://gitlab.gnome.org/GNOME/gnome-build-meta>`_
+with board support added for the Lenovo ThinkPad X13s (Qualcomm SC8280XP, aarch64).
+
+Downloads
+---------
+
+Pre-built images are available at `download.tuna.org <https://download.tuna.org>`_:
+
+- **Disk image** (for writing to USB/NVMe): `<https://download.tuna.org/gnome-os-x13s/disk.img>`_
+- **Live ISO** (bootable installer): `<https://download.tuna.org/gnome-os-x13s/disk.iso>`_
+
+Writing the disk image to a USB drive::
+
+  xzcat disk.img | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
+
+Board support is in ``elements/boards/thinkpad-x13s/``. The CI pipeline builds natively
+on ``ubuntu-24.04-arm`` (aarch64) using BuildStream.
+
+----
+
 GNOME Build Metadata
 ====================
 

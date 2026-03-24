@@ -464,6 +464,24 @@ jobs:
           path: output-image/
           retention-days: 7
 
+      - name: Upload disk image to R2
+        if: github.ref == 'refs/heads/feat/thinkpad-x13s-arm-build'
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          sudo apt-get install -y rclone
+          # Upload all files in output-image/ to R2
+          for f in output-image/*; do
+            [ -f "$f" ] || continue
+            fname=$(basename "$f")
+            echo "Uploading $fname..."
+            rclone copyto "$f" "r2:${{ secrets.R2_BUCKET }}/gnome-os-x13s/$fname" --progress
+          done
+
   build_live_iso:
     needs: [planning, build_deps]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
@@ -578,3 +596,17 @@ jobs:
           name: thinkpad-x13s-live-iso
           path: output-iso/disk.iso
           retention-days: 7
+
+      - name: Upload live ISO to R2
+        if: github.ref == 'refs/heads/feat/thinkpad-x13s-arm-build'
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          sudo apt-get install -y rclone
+          echo "Uploading disk.iso..."
+          rclone copyto output-iso/disk.iso \
+            "r2:${{ secrets.R2_BUCKET }}/gnome-os-x13s/disk.iso" --progress
