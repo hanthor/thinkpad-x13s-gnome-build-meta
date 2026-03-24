@@ -119,12 +119,17 @@ def main():
     core_elements = elements[:core_split]
     leaf_elements = elements[core_split:]
 
+    # Exclude the final target from chunks — it is built exclusively in
+    # build_final so that the chunk jobs never need to archive a huge CAS
+    # containing the full disk image artifact.
+    leaf_elements_for_chunks = [e for e in leaf_elements if e["name"] != target]
+
     # Core targets as a space-separated string
     core_targets = " ".join(e["name"] for e in core_elements)
 
     # Split leaves into chunks
-    if leaf_elements and num_chunks > 0:
-        chunks = chunk_list(leaf_elements, min(num_chunks, len(leaf_elements)))
+    if leaf_elements_for_chunks and num_chunks > 0:
+        chunks = chunk_list(leaf_elements_for_chunks, min(num_chunks, len(leaf_elements_for_chunks)))
     else:
         chunks = []
 

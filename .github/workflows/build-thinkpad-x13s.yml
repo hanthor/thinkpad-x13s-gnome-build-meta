@@ -350,8 +350,15 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc             /usr/local/share/powershell /usr/share/swift /usr/lib/jvm             /opt/hostedtoolcache/CodeQL
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /usr/lib/jvm \
+            /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/node /opt/hostedtoolcache/Python \
+            /usr/local/share/boost /usr/share/az_* /usr/local/share/chromium \
+            /usr/local/share/edge_driver /usr/local/share/gecko_driver
           sudo docker image prune -af 2>/dev/null || true
+          sudo apt-get clean -y 2>/dev/null || true
           df -h
 
       - name: Setup ORAS
@@ -398,11 +405,10 @@ jobs:
               rm -f "$TARBALL" "cas-${chunk}.tar"
             fi
           done
+          df -h
 
       - name: Generate snakeoil boot keys
         run: make -C files/boot-keys IMPORT_MODE=snakeoil
-
-      - name: Generate CI config
         run: |
           mkdir -p logs
           cat > buildstream-ci.conf <<'BSTCONF'
@@ -435,6 +441,11 @@ jobs:
 
       - name: Checkout Image Artifact
         run: |
+          df -h
+          # Free CAS staging/tmp dirs (no longer needed after build)
+          sudo rm -rf "$HOME/.cache/buildstream/cas/staging" \
+                      "$HOME/.cache/buildstream/cas/tmp"
+          df -h
           sudo podman run --rm --privileged \
             --security-opt apparmor=unconfined --security-opt seccomp=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
@@ -464,9 +475,7 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/share/powershell /usr/share/swift /usr/lib/jvm \
-            /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc             /usr/local/share/powershell /usr/share/swift /usr/lib/jvm             /opt/hostedtoolcache/CodeQL
           sudo docker image prune -af 2>/dev/null || true
           df -h
 
