@@ -409,6 +409,8 @@ jobs:
 
       - name: Generate snakeoil boot keys
         run: make -C files/boot-keys IMPORT_MODE=snakeoil
+
+      - name: Generate CI config
         run: |
           mkdir -p logs
           cat > buildstream-ci.conf <<'BSTCONF'
