@@ -62,8 +62,22 @@ config:
            gnome-os dummy \
            %{ostree-branch}
 
-  # Copy EFI binaries (systemd-boot, keys) from the deployed OS
-  - cp -r "%{sysroot}"/ostree/boot.1/gnome-os/*/*/boot/EFI/ "%{sysroot}/boot/"
+  # Copy EFI binaries (systemd-boot, keys) from the deployed OS.
+  # Deployment tree is at ostree/boot.1/gnome-os/<commit>/<N>/ which mirrors
+  # the ostree commit; EFI files are there if prepare-image.sh moved /efi/ → /boot/.
+  - |
+    echo "Deployment tree structure:"
+    find "%{sysroot}/ostree/boot.1" -maxdepth 5 -type d 2>/dev/null | head -20 || true
+    EFI_SRC=$(ls -d "%{sysroot}"/ostree/boot.1/gnome-os/*/*/boot/EFI 2>/dev/null | head -1 || true)
+    if [ -n "${EFI_SRC}" ]; then
+      cp -r "${EFI_SRC}/" "%{sysroot}/boot/"
+    else
+      echo "WARNING: EFI not found in deployment tree, falling back to /efi/ from commit"
+      DEPLOY=$(ls -d "%{sysroot}"/ostree/deploy/gnome-os/deploy/*.0 2>/dev/null | head -1 || true)
+      echo "Deployment dir: ${DEPLOY}"
+      find "${DEPLOY}" -maxdepth 3 -name "EFI" -type d 2>/dev/null | head -5 || true
+      exit 1
+    fi
 
   # Copy the X13s DTB from the kernel build into the EFI partition.
   # BLS entries reference it as /dtb/<dtb-path>.

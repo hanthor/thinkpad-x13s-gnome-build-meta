@@ -34,6 +34,18 @@ config:
        --rootpasswd root \
        --rootsource LABEL=root \
        --efisource LABEL=EFI \
-       --efipath /boot >/dev/null
+       --efipath /boot
+
+  - |
+    # prepare-image.sh with --efipath /boot should move /efi/ → /boot/.
+    # On some CI environments it may not run bootctl install (no EFI NVRAM),
+    # so ensure /boot/EFI/ exists for the ostree commit by copying from /efi/.
+    echo "EFI content before ensure step:"
+    find %{sysroot}/efi %{sysroot}/boot -maxdepth 3 -type d 2>/dev/null | sort || true
+    if [ -d "%{sysroot}/efi/EFI" ] && [ ! -d "%{sysroot}/boot/EFI" ]; then
+      echo "Copying /efi/ to /boot/ (prepare-image.sh did not do this)"
+      mkdir -p "%{sysroot}/boot"
+      cp -rT "%{sysroot}/efi" "%{sysroot}/boot"
+    fi
 
   - mv %{sysroot}/etc %{sysroot}/usr/etc
