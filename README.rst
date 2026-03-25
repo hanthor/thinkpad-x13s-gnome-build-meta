@@ -11,10 +11,10 @@ with board support added for the Lenovo ThinkPad X13s (Qualcomm SC8280XP, aarch6
 Downloads
 ---------
 
-Pre-built images are available at `download.tuna.org <https://download.tuna.org>`_:
+Pre-built images are available at `download.tunaos.org <https://download.tunaos.org>`_:
 
-- **Disk image** (for writing to USB/NVMe): `<https://download.tuna.org/gnome-os-x13s/disk.img>`_
-- **Live ISO** (bootable installer): `<https://download.tuna.org/gnome-os-x13s/disk.iso>`_
+- **Disk image** (for writing to USB/NVMe): `<https://download.tunaos.org/gnome-os-x13s/disk.img>`_
+- **Live ISO** (bootable installer): `<https://download.tunaos.org/gnome-os-x13s/disk.iso>`_
 
 Writing the disk image to a USB drive::
 
